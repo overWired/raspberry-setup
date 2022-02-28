@@ -1,0 +1,13 @@
+---
+
+mirror:
+  hosts:
+    magicmirror.local:
+    raspberrypi.local:
+
+  vars:
+      ansible_become: yes
+      ansible_user: pricej
+      mirror_user: mirror
+      magic_mirror_user_dir: "/home/{{ mirror_user }}"
+      magic_mirror_dir: "{{ magic_mirror_user_dir }}/MagicMirror"

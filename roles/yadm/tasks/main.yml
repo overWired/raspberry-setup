@@ -1,0 +1,6 @@
+---
+  - name: 'Install YADM'
+    apt:
+      cache_valid_time: 3600
+      name: yadm
+      state: latest

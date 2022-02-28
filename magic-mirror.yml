@@ -1,0 +1,123 @@
+---
+- name: Magic Mirror
+  hosts: raspberrypi.local
+
+  roles:
+    - pi-upgrade
+    - yadm
+
+  tasks:
+    - name: Create user account
+      ansible.builtin.user:
+        comment: Magic Mirror user account
+        create_home: yes
+        groups:
+          - "sudo"
+          - "users"
+        name: "{{ mirror_user }}"
+        # https://docs.ansible.com/ansible/latest/reference_appendices/faq.html#how-do-i-generate-encrypted-passwords-for-the-user-module
+        password: "{{ mirror_user_password }}"
+        shell: /bin/bash
+        state: present
+        uid: 1001
+
+    - name: Create an .ssh directory for user
+      ansible.builtin.file:
+        state: directory
+        path: "{{ magic_mirror_user_dir }}/.ssh"
+        owner: "{{ mirror_user }}"
+        group: "{{ mirror_user }}"
+        mode: 0700
+
+    - name: Create authorized_keys file
+      ansible.builtin.template:
+        src: templates/mirror/authorized_keys.j2
+        dest: "{{ magic_mirror_user_dir }}/.ssh/authorized_keys"
+        owner: "{{ mirror_user }}"
+        group: "{{ mirror_user }}"
+        mode: 0600
+
+    - name: Installing Linux modules required for Magic Mirror
+      apt:
+        pkg:
+          - git
+          - nodejs
+          - npm
+        state: latest
+
+    - debug:
+        msg: "Creating directory {{ magic_mirror_dir }}"
+
+    - name: Create the MagicMirror directory
+      ansible.builtin.file:
+        group: mirror
+        mode: "ug+rwxs"
+        owner: "{{ mirror_user }}"
+        path: "{{ magic_mirror_dir }}"
+        recurse: no
+        state: directory
+
+    - name: Determine if we need to clone the MagicMirror repo
+      stat:
+        path: "{{ magic_mirror_dir }}/.git"
+      register: magic_mirror_clone
+
+    - name: Clone the MagicMirror repo via include
+      include_tasks: "git-checkout.yml"
+      vars:
+        git_dest: "{{ magic_mirror_dir }}"
+        git_repo: "https://github.com/MichMich/MagicMirror"
+      when: not magic_mirror_clone.stat.exists
+
+    - name: Fix ownership of the MagicMirror directory and contents
+      ansible.builtin.file:
+        group: "{{ mirror_user }}"
+        owner: "{{ mirror_user }}"
+        path: "{{ magic_mirror_dir }}"
+        recurse: yes
+        state: directory
+
+    - name: Install MagicMirror2 package
+      ansible.builtin.command:
+      become: yes
+      become_user: "{{ mirror_user }}"
+      args:
+        chdir: "{{ magic_mirror_dir }}"
+        cmd:  "npm install"
+
+    - name: Attempt upgrade to correct any NPM module vulerabilities
+      ansible.builtin.command:
+      become: yes
+      become_user: "{{ mirror_user }}"
+      args:
+        chdir: "{{ magic_mirror_dir }}"
+        cmd:  "npm audit fix"
+
+    - name: Apply MagicMirror configuration file
+      ansible.builtin.template:
+        dest: "{{ magic_mirror_dir }}/config/config.js"
+        group: "{{ mirror_user }}"
+        owner: "{{ mirror_user }}"
+        src: templates/mirror/config.js.j2
+
+    - name: Provide MagicMirror startup script 'mm.sh'
+      ansible.builtin.template:
+        dest: "{{ magic_mirror_user_dir}}/mm.sh"
+        group: "{{ mirror_user }}"
+        mode: 0700
+        owner: "{{ mirror_user }}"
+        src: templates/mirror/config.js.j2
+
+    - name: Install PM2 package (will be used to start and keep MagicMirror running)
+      ansible.builtin.command:
+      become: yes
+      args:
+        chdir: "{{ magic_mirror_user_dir }}"
+        cmd:  "npm install -g pm2"
+        creates: /usr/local/lib/node_modules/pm2
+
+    - name: Configure PM2 to auto-start on boot
+      ansible.builtin.script: scripts/pm2/autostart-pm2.sh
+      args:
+        executable: /bin/bash
+

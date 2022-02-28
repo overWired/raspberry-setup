@@ -1,0 +1,8 @@
+- debug:
+    msg: "git-repo={{ git_repo }}; git-dest={{ git_dest }}"
+
+- name: Clone Git repository {{ git-repo-name }}
+  ansible.builtin.git:
+    clone: yes
+    dest: "{{ git_dest }}"
+    repo: "{{ git_repo }}"
