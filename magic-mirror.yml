@@ -1,6 +1,6 @@
 ---
 - name: Magic Mirror
-  hosts: raspberrypi.local
+  hosts: magicmirror.local
 
   roles:
     - pi-upgrade

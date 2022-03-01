@@ -3,7 +3,7 @@
 mirror:
   hosts:
     magicmirror.local:
-    raspberrypi.local:
+#    raspberrypi.local:
 
   vars:
       ansible_become: yes
