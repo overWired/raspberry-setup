@@ -69,6 +69,26 @@
         git_repo: "https://github.com/MichMich/MagicMirror"
       when: not magic_mirror_clone.stat.exists
 
+    - name: Determine if we need to clone the MMM-BackgroundSlideshow module repo
+      stat:
+        path: "{{ magic_mirror_dir }}/modules/MMM-BackgroundSlideshow/.git"
+      register: mmm_background_slideshow_clone
+
+    - name: Clone the MMM-BackgroundSlideshow module repo via include
+      include_tasks: "git-checkout.yml"
+      vars:
+        git_dest: "{{ magic_mirror_dir }}/modules/MMM-BackgroundSlideshow"
+        git_repo: "https://github.com/darickc/MMM-BackgroundSlideshow.git"
+      when: not mmm_background_slideshow_clone.stat.exists
+
+    - name: Pre-populate some pictures
+      copy:
+        dest: "{{ magic_mirror_dir }}/modules/MMM-BackgroundSlideshow/Pictures"
+        follow: yes
+        group: "{{ mirror_user }}"
+        owner: "{{ mirror_user }}"
+        src: files/mirror/Pictures/
+
     - name: Fix ownership of the MagicMirror directory and contents
       ansible.builtin.file:
         group: "{{ mirror_user }}"
@@ -93,6 +113,14 @@
         chdir: "{{ magic_mirror_dir }}"
         cmd:  "npm audit fix"
 
+    - name: Install MMM-BackgroundSlideshow package
+      ansible.builtin.command:
+      become: yes
+      become_user: "{{ mirror_user }}"
+      args:
+        chdir: "{{ magic_mirror_dir }}/modules/MMM-BackgroundSlideshow"
+        cmd:  "npm install"
+
     - name: Apply MagicMirror configuration file
       ansible.builtin.template:
         dest: "{{ magic_mirror_dir }}/config/config.js"
@@ -106,7 +134,7 @@
         group: "{{ mirror_user }}"
         mode: 0700
         owner: "{{ mirror_user }}"
-        src: templates/mirror/config.js.j2
+        src: templates/mirror/mm.sh.j2
 
     - name: Install PM2 package (will be used to start and keep MagicMirror running)
       ansible.builtin.command:
@@ -120,4 +148,55 @@
       ansible.builtin.script: scripts/pm2/autostart-pm2.sh
       args:
         executable: /bin/bash
+
+    - name: Enable GUI auto-login for user mirror
+      community.general.ini_file:
+      become: yes
+      args:
+        backup: yes
+        path: /etc/lightdm/lightdm.conf
+        section: "Seat:*"
+        option: "autologin-user"
+        value: "{{ mirror_user }}"
+
+    - name: Remove GUI auto-login delay
+      community.general.ini_file:
+      become: yes
+      args:
+        backup: yes
+        path: /etc/lightdm/lightdm.conf
+        section: "Seat:*"
+        state: present
+        option: "autologin-user-timeout"
+        value: 0
+
+    - name: Disable screen blanking
+      community.general.ini_file:
+      become: yes
+      args:
+        backup: yes
+        path: /etc/lightdm/lightdm.conf
+        section: "Seat:*"
+        option: "#xserver-command"
+        value: "X -s 0 -dpms"
+        state: present
+
+    - name: 'Reboot'
+      ansible.builtin.reboot:
+
+    - name: Configure pm2 to start MagicMirror
+      ansible.builtin.command:
+      become: yes
+      become_user: "{{ mirror_user }}"
+      args:
+        chdir: "{{ magic_mirror_user_dir }}"
+        cmd:  "pm2 start mm.sh --name MagicMirror --restart-delay 750"
+
+    - name: Save pm2 configuration
+      ansible.builtin.command:
+      become: yes
+      become_user: "{{ mirror_user }}"
+      args:
+        chdir: "{{ magic_mirror_user_dir }}"
+        cmd:  "pm2 save"
 
